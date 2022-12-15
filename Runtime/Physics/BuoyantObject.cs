@@ -174,6 +174,7 @@ namespace WaterSystem.Physics
             switch (_buoyancyType)
             {
                 case BuoyancyType.PhysicalVoxel:
+                case BuoyancyType.Physical:
                     {
                         var autoSyncTransforms = UnityPhysics.autoSyncTransforms;
                         UnityPhysics.autoSyncTransforms = false;
@@ -187,10 +188,10 @@ namespace WaterSystem.Physics
                         UpdateDrag(submergedAmount);
                         break;
                     }
-                case BuoyancyType.Physical:
-                    BuoyancyForce(Vector3.zero, _velocity[0], Heights[0].y + waterLevelOffset, ref submergedAmount, ref _debugInfo[0]);
+                //case BuoyancyType.Physical:
+                    //BuoyancyForce(_samplePoints[0], _velocity[0], Heights[0].y + waterLevelOffset, ref submergedAmount, ref _debugInfo[0]);
                     //UpdateDrag(submergedAmount);
-                    break;
+                    //break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
