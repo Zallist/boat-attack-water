@@ -248,6 +248,7 @@ namespace WaterSystem
                 var waveCountMulti = 1f / WaveData.Length;
                 var wavePos = new float3(0f, 0f, 0f);
                 var waveNorm = new float3(0f, 0f, 0f);
+                var opacity = math.saturate(Opacity[i]);
 
                 for (var wave = 0; wave < WaveData.Length; wave++) // for each wave
                 {
@@ -291,11 +292,13 @@ namespace WaterSystem
                         1 - (qi * wa * sinCalc));
                     waveNorm += (norm * waveCountMulti) * amplitude;
                 }
-                wavePos *= math.saturate(Opacity[i]);
+                wavePos *= opacity;
+                wavePos *= 0.5f; // have to half the effects of the wave since they're inaccurate
+
                 wavePos.xz += Position[i].xz;
                 wavePos.y += WaveLevelOffset;
                 OutPosition[i] = wavePos;
-                waveNorm.xy *= Opacity[i];
+                waveNorm.xy *= opacity;
                 OutNormal[i] = math.normalize(waveNorm.xzy);
             }
         }
