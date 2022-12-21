@@ -22,7 +22,9 @@ namespace WaterSystem.Physics
     public class BuoyantObject : MonoBehaviour
     {
         public BuoyancyType _buoyancyType; // type of buoyancy to calculate
+        [NonSerialized]
         public float density; // density of the object, this is calculated off it's volume and mass
+        [NonSerialized]
         public float volume; // volume of the object, this is calculated via it's colliders
         public float voxelResolution = 0.51f; // voxel resolution, represents the half size of a voxel when creating the voxel representation
         private Bounds _voxelBounds; // bounds of the voxels
@@ -42,8 +44,8 @@ namespace WaterSystem.Physics
         [NonSerialized] public float3[] Heights; // water height array(only size of 1 when simple or non-physical)
         private float3[] _normals; // water normal array(only used when non-physical and size of 1 also when simple)
         private float3[] _velocity; // voxel velocity for buoyancy
-        
-        [SerializeField] Collider[] colliders; // colliders attatched ot this object
+
+        [SerializeField][HideInInspector] List<Collider> colliders = new(); // colliders attatched ot this object
         private Rigidbody _rb;
         private DebugDrawing[] _debugInfo; // For drawing force gizmos
         [NonSerialized] public float PercentSubmerged;
@@ -59,6 +61,7 @@ namespace WaterSystem.Physics
             switch (_buoyancyType)
             {
                 case BuoyancyType.NonPhysical:
+                    SetupColliders();
                     SetupVoxels();
                     SetupData();
                     break;
@@ -68,6 +71,7 @@ namespace WaterSystem.Physics
                     SetupData();
                     break;
                 case BuoyancyType.Physical:
+                    SetupColliders();
                     SetupVoxels();
                     SetupData();
                     SetupPhysical();
@@ -85,15 +89,7 @@ namespace WaterSystem.Physics
 
         private void SetupVoxels()
         {
-            if (IsVoxelBased)
-            {
-                SliceIntoVoxels();
-            }
-            else
-            {
-                _voxels = new Vector3[1];
-                _voxels[0] = centerOfMass;
-            }
+            SliceIntoVoxels();
         }
 
         private void SetupData()
@@ -116,12 +112,12 @@ namespace WaterSystem.Physics
         private void SetupColliders()
         {
             // The object must have a Collider
-            colliders = GetComponentsInChildren<Collider>();
-            if (colliders.Length != 0) return;
+            GetComponentsInChildren(colliders);
+            if (colliders.Count != 0) return;
             
-            colliders = new Collider[1];
-            colliders[0] = gameObject.AddComponent<BoxCollider>();
-            Debug.LogError($"Buoyancy:Object \"{name}\" had no coll. BoxCollider has been added.");
+            colliders.Clear();
+            colliders.Add(gameObject.AddComponent<BoxCollider>());
+            //Debug.LogError($"Buoyancy:Object \"{name}\" had no coll. BoxCollider has been added.");
         }
 
         private void Update()
@@ -176,25 +172,53 @@ namespace WaterSystem.Physics
                 case BuoyancyType.PhysicalVoxel:
                 case BuoyancyType.Physical:
                     {
-                        var autoSyncTransforms = UnityPhysics.autoSyncTransforms;
-                        UnityPhysics.autoSyncTransforms = false;
-
                         for (var i = 0; i < _voxels.Length; i++)
+                        {
                             BuoyancyForce(_samplePoints[i], _velocity[i], Heights[i].y + waterLevelOffset, ref submergedAmount, ref _debugInfo[i]);
+                        }
 
-                        UnityPhysics.SyncTransforms();
-                        UnityPhysics.autoSyncTransforms = autoSyncTransforms;
+                        if (_voxels.Length == 1)
+                        {
+                            // we don't have enough voxels to do ANY kind of rotation, so let's do it here instead
+                            var upToTargetRotation = Quaternion.FromToRotation(Vector3.up, _normals[0]);
+                            var upToMyRotation = Quaternion.FromToRotation(Vector3.up, transform.up);
+                            var upDeltaRotation = upToTargetRotation * Quaternion.Inverse(upToMyRotation); // get the delta to rotate our up to the target up
 
-                        UpdateDrag(submergedAmount);
+                            AddTorqueToRotateToDeltaRotation(_rb, upDeltaRotation);
+                        }
+
                         break;
                     }
-                //case BuoyancyType.Physical:
-                    //BuoyancyForce(_samplePoints[0], _velocity[0], Heights[0].y + waterLevelOffset, ref submergedAmount, ref _debugInfo[0]);
-                    //UpdateDrag(submergedAmount);
-                    //break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            UnityPhysics.SyncTransforms();
+
+            UpdateDrag(submergedAmount);
+        }
+
+        public static float ModularClamp(float value, float rangeMin = -180f, float rangeMax = 180f)
+        {
+            if (value < rangeMin)
+                value = rangeMax - ((rangeMin - value) % (rangeMax - rangeMin));
+            else
+                value = rangeMin + ((value - rangeMin) % (rangeMax - rangeMin));
+
+            return value;
+        }
+
+        public static void AddTorqueToRotateToDeltaRotation(Rigidbody rigidbody, Quaternion deltaRotation)
+        {
+            var newVelocity = deltaRotation.eulerAngles;
+
+            newVelocity.x = ModularClamp(newVelocity.x); // ensure it wraps
+            newVelocity.y = ModularClamp(newVelocity.y); // ensure it wraps
+            newVelocity.z = ModularClamp(newVelocity.z); // ensure it wraps
+
+            newVelocity *= Mathf.Deg2Rad; // angular velocity is in rads
+
+            rigidbody.AddTorque(newVelocity, ForceMode.Impulse);
         }
 
         private static readonly WaitForFixedUpdate YieldLateFixedUpdate = new WaitForFixedUpdate();
@@ -241,10 +265,14 @@ namespace WaterSystem.Physics
             debug.WaterHeight = waterHeight;
             debug.Force = Vector3.zero;
 
-            if (!(position.y - voxelResolution < waterHeight)) return;
-            
-            var k = math.clamp(waterHeight - (position.y - voxelResolution), 0f, 1f);
+            float yPosition = position.y;
 
+            if (IsVoxelBased)
+                yPosition -= voxelResolution;
+
+            if (yPosition > waterHeight) return;
+
+            var k = math.clamp(waterHeight - yPosition, 0f, 1f);
             submergedAmount += k / _voxels.Length;
 
             var localDampingForce = Dampner * _rb.mass * -velocity;
@@ -281,6 +309,13 @@ namespace WaterSystem.Physics
             var points = new List<Vector3>();
 
             var rawBounds = VoxelBounds();
+
+            if (!IsVoxelBased)
+            {
+                var boundSize = rawBounds.size;
+                voxelResolution = Math.Max(Math.Max(boundSize.x, boundSize.y), boundSize.z) + Mathf.Epsilon;
+            }
+
             _voxelBounds = rawBounds;
             _voxelBounds.size = RoundVector(rawBounds.size, voxelResolution);
             for (var ix = -_voxelBounds.extents.x; ix < _voxelBounds.extents.x; ix += voxelResolution)
@@ -303,14 +338,14 @@ namespace WaterSystem.Physics
                                 inside = true;
                             }
                         }
-                        if(inside)
+                        if (inside)
                             points.Add(p);
-					}
-				}
+                    }
+                }
             }
-
             _voxels = points.ToArray();
-			t.SetPositionAndRotation(pos, rot);
+
+            t.SetPositionAndRotation(pos, rot);
             t.localScale = size;
             UnityPhysics.SyncTransforms();
 
