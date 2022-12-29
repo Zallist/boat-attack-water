@@ -146,7 +146,7 @@ namespace WaterSystem
         static void CreateDepthCamera(out Camera camera, Vector3 position, float size, LayerMask mask)
         {
             //Generate the camera
-            var go = new GameObject("depthCamera") { hideFlags = HideFlags.HideAndDontSave }; //create the cameraObject
+            var go = new GameObject("depthCamera") { hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector | HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild }; //create the cameraObject
             Camera cam = go.AddComponent<Camera>();
 
             // setup camera props

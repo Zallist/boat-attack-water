@@ -239,7 +239,7 @@ namespace WaterSystem.Rendering
             reflectionCamera.transform.SetPositionAndRotation(t.position, t.rotation);
             reflectionCamera.depth = -10;
             reflectionCamera.enabled = false;
-            go.hideFlags = HideFlags.HideAndDontSave;
+            go.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector | HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild;
 
             return reflectionCamera;
         }
